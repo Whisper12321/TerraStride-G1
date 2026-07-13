@@ -23,6 +23,7 @@ import math
 import os
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional, Tuple
 
 import mujoco
@@ -41,6 +42,10 @@ except Exception:  # keep the script usable without joystick.py
 # -----------------------------------------------------------------------------
 # Joint order conventions
 # -----------------------------------------------------------------------------
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_MUJOCO_MODEL_PATH = PROJECT_ROOT / "legged_lab/assets/g1_description/scene_navigation_locomotion_terrain_v4_hfield.xml"
+DEFAULT_LOCOMOTION_POLICY_PATH = PROJECT_ROOT / "logs/g1_locomotion/2026-05-26_17-11-30/exported/policy.pt"
 
 MUJOCO_JOINT_NAMES = [
     "left_hip_pitch_joint",
@@ -84,8 +89,8 @@ ISAAC_TO_MUJOCO = np.array([0, 2, 4, 6, 8, 10, 1, 3, 5, 7, 9, 11], dtype=np.int6
 
 @dataclass
 class SimConfig:
-    mujoco_model_path: str = "/home/zstu58/zyd/g1_obstacle/legged_lab/assets/g1_description/scene_navigation_locomotion_terrain_v4_hfield.xml"
-    policy_path: str = "/home/zstu58/zyd/g1_obstacle/logs/g1_locomotion/2026-05-26_17-11-30/exported/policy.pt"
+    mujoco_model_path: str = str(DEFAULT_MUJOCO_MODEL_PATH)
+    policy_path: str = str(DEFAULT_LOCOMOTION_POLICY_PATH)
     sim_duration_s: float = 600.0
     dt: float = 0.002
     decimation: int = 10
@@ -108,10 +113,10 @@ class CameraConfig:
 
     distance: float = 1.5
 
-    # 相对机器人朝向的角度
-    # 0: 跟在机器人后方，朝机器人前方看
-    # 180: 从机器人前方看向机器人后方
-    # 90 / -90: 从左右侧看
+    # Relative to robot heading:
+    # 0 follows behind the robot and looks forward.
+    # 180 looks from the front toward the rear.
+    # 90 / -90 are side views.
     relative_azimuth: float = 0.0
 
     elevation: float = -15.0
@@ -150,12 +155,12 @@ class DepthCameraConfig:
     @property
     def processed_height(self) -> int:
         up, down, _, _ = self.crop_region
-        return max(1, self.height - up - down)
+        return self.height - up - down
 
     @property
     def processed_width(self) -> int:
         _, _, left, right = self.crop_region
-        return max(1, self.width - left - right)
+        return self.width - left - right
 
     @property
     def depth_dim(self) -> int:
@@ -385,7 +390,7 @@ class NavigationRuntime:
         if self.goal_reached:
             return np.zeros(3, dtype=np.float32)
         if cfg.navigation.command_interpolation == "linear":
-            ratio = float(low_level_substep + 1) / float(max(1, cfg.navigation.navigation_decimation))
+            ratio = float(low_level_substep + 1) / float(cfg.navigation.navigation_decimation)
             return ((1.0 - ratio) * self.prev_nav_cmd + ratio * self.nav_cmd).astype(np.float32)
         return self.nav_cmd.astype(np.float32, copy=True)
 
@@ -404,17 +409,16 @@ def get_site_pos(model, data, site_name: str) -> np.ndarray:
     if site_id < 0:
         raise RuntimeError(f"Cannot find site '{site_name}' in XML.")
 
-    # mj_forward 后 data.site_xpos 才可靠
+    # data.site_xpos is reliable after mj_forward.
     mujoco.mj_forward(model, data)
     return data.site_xpos[site_id].copy()
 
 
-def set_site_pos_if_exists(model: mujoco.MjModel, site_name: str, pos_w: np.ndarray) -> bool:
+def set_site_pos(model: mujoco.MjModel, site_name: str, pos_w: np.ndarray) -> None:
     site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
     if site_id < 0:
-        return False
+        raise RuntimeError(f"Cannot find site '{site_name}' in XML.")
     model.site_pos[site_id] = np.asarray(pos_w, dtype=np.float64)
-    return True
 
 
 def quat_wxyz_to_xyzw(q_wxyz: np.ndarray) -> np.ndarray:
@@ -786,8 +790,6 @@ class MujocoDepthCamera:
         cam_rot = parent_rot * self.offset_rot
         forward_w = cam_rot.apply(np.array([1.0, 0.0, 0.0], dtype=np.float64))
         up_w = cam_rot.apply(np.array([0.0, 0.0, 1.0], dtype=np.float64))
-        forward_w /= max(np.linalg.norm(forward_w), 1.0e-9)
-        up_w /= max(np.linalg.norm(up_w), 1.0e-9)
         return cam_pos, forward_w, up_w
 
     def update(self, data: mujoco.MjData) -> np.ndarray:
@@ -865,8 +867,6 @@ class MujocoDepthCamera:
         up, down, left, right = self.dc.crop_region
         end_down = image.shape[0] - down
         end_right = image.shape[1] - right
-        if up >= end_down or left >= end_right:
-            return image
         return image[up:end_down, left:end_right]
 
     def _process_depth(self, depth_m: np.ndarray) -> np.ndarray:
@@ -877,7 +877,7 @@ class MujocoDepthCamera:
 
     def _normalize_depth(self, depth_m: np.ndarray) -> np.ndarray:
         depth_m = np.clip(depth_m, self.dc.min_distance, self.dc.max_distance)
-        depth_norm = (depth_m - self.dc.depth_range[0]) / max(self.dc.depth_range[1] - self.dc.depth_range[0], 1.0e-6)
+        depth_norm = (depth_m - self.dc.depth_range[0]) / (self.dc.depth_range[1] - self.dc.depth_range[0])
         return np.clip(depth_norm, 0.0, 1.0)
 
     def _gaussian_blur(self, image: np.ndarray) -> np.ndarray:
@@ -899,8 +899,6 @@ class MujocoDepthCamera:
         return blurred
 
     def _show(self, name: str, image: np.ndarray) -> None:
-        if self.cv2 is None:
-            return
         image_u8 = (image * 255.0).astype(np.uint8)
         if self.dc.window_scale > 1:
             image_u8 = self.cv2.resize(
@@ -945,7 +943,6 @@ def setup_follow_camera_view(cam, cfg, body_id: int) -> None:
     cam.azimuth = cfg.camera.relative_azimuth
 
 
-# 绑定相机到机器人 pelvis
 def setup_follow_camera(model, viewer, cfg):
     body_id = get_follow_camera_body_id(model, cfg)
     setup_follow_camera_view(viewer.cam, cfg, body_id)
@@ -967,13 +964,11 @@ def setup_world_camera(viewer, cfg) -> None:
 
 def configure_scene_option(vopt) -> None:
     vopt.flags[mujoco.mjtVisFlag.mjVIS_RANGEFINDER] = False
-    if len(vopt.geomgroup) > 3:
-        vopt.geomgroup[1] = True   # terrain, walls, obstacles
-        vopt.geomgroup[2] = True   # robot visual mesh
-        vopt.geomgroup[3] = False  # robot collision
-        vopt.geomgroup[5] = False  # height scan markers
-    if hasattr(vopt, "sitegroup"):
-        vopt.sitegroup[:] = True   # start, goal, origin markers
+    vopt.geomgroup[1] = True   # terrain, walls, obstacles
+    vopt.geomgroup[2] = True   # robot visual mesh
+    vopt.geomgroup[3] = False  # robot collision
+    vopt.geomgroup[5] = False  # height scan markers
+    vopt.sitegroup[:] = True   # start, goal, origin markers
 
 
 def configure_viewer_visuals(viewer) -> None:
@@ -1010,12 +1005,6 @@ def update_follow_camera_view(cam, data, cfg, body_id) -> None:
         cam.azimuth = yaw_deg + cfg.camera.relative_azimuth
     else:
         cam.azimuth = cfg.camera.relative_azimuth
-
-
-def update_follow_camera(model, data, viewer, cfg, body_id):
-    if not cfg.camera.enable_follow_camera:
-        return
-    update_follow_camera_view(viewer.cam, data, cfg, body_id)
 
 
 def render_main_viewer(viewer) -> None:
@@ -1169,23 +1158,11 @@ def run_mujoco(policy: torch.jit.ScriptModule, cfg: Sim2SimConfig) -> None:
     print_config_summary(cfg)
 
     model = mujoco.MjModel.from_xml_path(cfg.sim.mujoco_model_path)
-    marker_count = 0
-    for i in range(cfg.height_scan.num_rays):
-        body_id = mujoco.mj_name2id(
-            model,
-            mujoco.mjtObj.mjOBJ_BODY,
-            f"marker{i}",
-        )
-        if body_id != -1:
-            marker_count += 1
-
-    print(f"[DEBUG] found marker bodies: {marker_count}/{cfg.height_scan.num_rays}")
-
     model.opt.timestep = cfg.sim.dt
     data = mujoco.MjData(model)
 
     start_pos = get_site_pos(model, data, "start_marker")
-    # x, y 使用 XML 里的 start_marker
+    # Use the start marker from the XML for the initial xy position.
     data.qpos[0] = start_pos[0]
     data.qpos[1] = start_pos[1]
     data.qpos[2] = cfg.robot.initial_base_height
@@ -1200,7 +1177,7 @@ def run_mujoco(policy: torch.jit.ScriptModule, cfg: Sim2SimConfig) -> None:
         else:
             navigation_goal_xy = np.array(cfg.navigation.goal_xy, dtype=np.float64)
             goal_site_pos = np.array([navigation_goal_xy[0], navigation_goal_xy[1], 0.08], dtype=np.float64)
-            set_site_pos_if_exists(model, cfg.navigation.goal_site_name, goal_site_pos)
+            set_site_pos(model, cfg.navigation.goal_site_name, goal_site_pos)
             mujoco.mj_forward(model, data)
         print(f"[NAV] goal_xy={np.round(navigation_goal_xy, 3).tolist()}")
 
@@ -1308,11 +1285,6 @@ def run_mujoco(policy: torch.jit.ScriptModule, cfg: Sim2SimConfig) -> None:
                 gait.step_phase()
 
                 if cfg.navigation.enabled:
-                    assert navigation_runtime is not None
-                    assert navigation_policy is not None
-                    assert navigation_goal_xy is not None
-                    assert depth_camera is not None
-
                     goal_dist = float(np.linalg.norm(navigation_goal_xy - data.qpos[:2]))
                     if goal_dist <= cfg.navigation.goal_reached_threshold:
                         if not navigation_runtime.goal_reached:
@@ -1418,7 +1390,7 @@ def run_mujoco(policy: torch.jit.ScriptModule, cfg: Sim2SimConfig) -> None:
 
             mujoco.mj_step(model, data)
             if video_recorder is not None:
-                if cfg.video.stop_on_goal and recording_goal_xy is not None:
+                if cfg.video.stop_on_goal:
                     recording_goal_dist = float(np.linalg.norm(recording_goal_xy - data.qpos[:2]))
                     if recording_goal_dist <= cfg.navigation.goal_reached_threshold:
                         video_recorder.write(data)
@@ -1432,8 +1404,7 @@ def run_mujoco(policy: torch.jit.ScriptModule, cfg: Sim2SimConfig) -> None:
             if world_viewer is not None:
                 render_main_viewer(world_viewer)
             if follow_viewer is not None:
-                if cfg.camera.enable_follow_camera and follow_camera_body_id is not None:
-                    update_follow_camera(model, data, follow_viewer, cfg, follow_camera_body_id)
+                update_follow_camera_view(follow_viewer.cam, data, cfg, follow_camera_body_id)
                 render_main_viewer(follow_viewer)
             if (
                 depth_camera is not None

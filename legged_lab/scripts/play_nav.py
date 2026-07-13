@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import os
 from collections.abc import Callable
+from pathlib import Path
 
 import torch
 from isaaclab.app import AppLauncher
@@ -35,6 +36,8 @@ import legged_lab.utils.cli_args as cli_args  # isort: skip
 
 
 SUPPORTED_TASKS = {"g1_navigation"}
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_LOCOMOTION_POLICY_PATH = PROJECT_ROOT / "logs/g1_locomotion/2026-05-26_17-11-30/exported/policy.pt"
 
 
 parser = argparse.ArgumentParser(description="Play a trained G1 autonomous navigation policy.")
@@ -55,8 +58,8 @@ parser.add_argument(
 parser.add_argument(
     "--locomotion_policy_path",
     type=str,
-    default="/home/zstu58/zyd/g1_obstacle/logs/g1_locomotion/2026-05-26_17-11-30/exported/policy.pt",
-    help="Path to the frozen low-level locomotion TorchScript policy.pt. Defaults to env cfg.",
+    default=str(DEFAULT_LOCOMOTION_POLICY_PATH),
+    help="Path to the frozen low-level locomotion TorchScript policy.pt.",
 )
 parser.add_argument("--max_episode_length_s", type=float, default=60.0, help="Episode length used for play.")
 parser.add_argument("--terrain_rows", type=int, default=1, help="Override generated terrain row count.")
@@ -84,12 +87,6 @@ parser.add_argument(
     type=int,
     default=0,
     help="Force privileged path-guidance level. 0 is strongest; the highest level removes path reward guidance.",
-)
-parser.add_argument(
-    "--waypoint_level",
-    type=int,
-    default=None,
-    help="Deprecated alias for --path_guidance_level.",
 )
 parser.add_argument(
     "--full_terrain",
@@ -157,9 +154,6 @@ from legged_lab.utils.cli_args import update_rsl_rl_cfg
 def _sync_seed_to_scene_and_terrain(env_cfg, seed: int) -> None:
     env_cfg.scene.seed = seed
     terrain_generator = env_cfg.scene.terrain_generator
-    if terrain_generator is None:
-        return
-
     terrain_generator.seed = seed
     for sub_cfg in terrain_generator.sub_terrains.values():
         if hasattr(sub_cfg, "seed"):
@@ -177,28 +171,25 @@ def _make_navigation_env_cfg(env_cfg, agent_cfg):
     env_cfg.scene.height_scanner.drift_range = (0.0, 0.0)
 
     # The low-level locomotion policy is loaded by G1NavigationEnv during construction.
-    if args_cli.locomotion_policy_path is not None:
-        env_cfg.nav.locomotion_policy_path = os.path.abspath(args_cli.locomotion_policy_path)
+    env_cfg.nav.locomotion_policy_path = os.path.abspath(args_cli.locomotion_policy_path)
 
-    if env_cfg.scene.terrain_generator is not None:
-        if args_cli.terrain_difficulty is not None:
-            difficulty = max(0.0, min(float(args_cli.terrain_difficulty), 1.0))
-            env_cfg.scene.terrain_generator.difficulty_range = (difficulty, difficulty)
-        if args_cli.terrain_rows is not None:
-            env_cfg.scene.terrain_generator.num_rows = args_cli.terrain_rows
-        if args_cli.terrain_cols is not None:
-            env_cfg.scene.terrain_generator.num_cols = args_cli.terrain_cols
-        if args_cli.min_path_cell_separation is not None:
-            separation = max(1, int(args_cli.min_path_cell_separation))
-            for sub_cfg in env_cfg.scene.terrain_generator.sub_terrains.values():
-                if hasattr(sub_cfg, "min_path_candidate_cell_separation"):
-                    sub_cfg.min_path_candidate_cell_separation = separation
-        if not args_cli.full_terrain and args_cli.num_envs == 1:
-            env_cfg.scene.terrain_generator.num_rows = 1
-            env_cfg.scene.terrain_generator.num_cols = 1
-            env_cfg.scene.max_init_terrain_level = 0
+    terrain_generator = env_cfg.scene.terrain_generator
+    difficulty = max(0.0, min(float(args_cli.terrain_difficulty), 1.0))
+    terrain_generator.difficulty_range = (difficulty, difficulty)
+    terrain_generator.num_rows = args_cli.terrain_rows
+    terrain_generator.num_cols = args_cli.terrain_cols
 
-        env_cfg.scene.terrain_generator.curriculum = False
+    separation = max(1, int(args_cli.min_path_cell_separation))
+    for sub_cfg in terrain_generator.sub_terrains.values():
+        if hasattr(sub_cfg, "min_path_candidate_cell_separation"):
+            sub_cfg.min_path_candidate_cell_separation = separation
+
+    if not args_cli.full_terrain and args_cli.num_envs == 1:
+        terrain_generator.num_rows = 1
+        terrain_generator.num_cols = 1
+        env_cfg.scene.max_init_terrain_level = 0
+
+    terrain_generator.curriculum = False
 
     env_cfg.scene.height_scanner.debug_vis = False
     env_cfg.scene.Lfoot_height_scanner.debug_vis = False
@@ -208,54 +199,32 @@ def _make_navigation_env_cfg(env_cfg, agent_cfg):
     return env_cfg
 
 
-def _env_supports_path_guidance(env) -> bool:
-    return hasattr(env, "path_guidance_levels") and hasattr(env.cfg.nav, "num_path_guidance_levels")
-
-
-def _apply_navigation_play_overrides(env, env_ids: torch.Tensor | None = None) -> bool:
-    supports_guidance = _env_supports_path_guidance(env)
-    forced_guidance_level = None
-    if supports_guidance:
-        forced_guidance_level = args_cli.path_guidance_level
-        if args_cli.waypoint_level is not None:
-            forced_guidance_level = args_cli.waypoint_level
-
-    if args_cli.path_level is None and forced_guidance_level is None:
-        return False
-
+def _apply_navigation_play_overrides(env, env_ids: torch.Tensor | None = None) -> None:
     if env_ids is None:
         env_ids = torch.arange(env.num_envs, device=env.device)
     else:
         env_ids = env_ids.to(device=env.device, dtype=torch.long)
-    if len(env_ids) == 0:
-        return False
 
-    if args_cli.path_level is not None:
-        max_path_level = max(int(env.cfg.nav.num_path_difficulty_levels) - 1, 0)
-        path_level = max(0, min(int(args_cli.path_level), max_path_level))
-        env.path_difficulty_levels[env_ids] = path_level
+    max_path_level = max(int(env.cfg.nav.num_path_difficulty_levels) - 1, 0)
+    path_level = max(0, min(int(args_cli.path_level), max_path_level))
+    env.path_difficulty_levels[env_ids] = path_level
 
-    if supports_guidance and forced_guidance_level is not None:
-        max_guidance_level = max(int(env.cfg.nav.num_path_guidance_levels) - 1, 0)
-        guidance_level = max(0, min(int(forced_guidance_level), max_guidance_level))
-        env.path_guidance_levels[env_ids] = guidance_level
+    max_guidance_level = max(int(env.cfg.nav.num_path_guidance_levels) - 1, 0)
+    guidance_level = max(0, min(int(args_cli.path_guidance_level), max_guidance_level))
+    env.path_guidance_levels[env_ids] = guidance_level
 
-    if hasattr(env, "_invalidate_navigation_routes"):
-        env._invalidate_navigation_routes(env_ids)
+    env._invalidate_navigation_routes(env_ids)
     env._reset_navigation_task(env_ids)
     env._reset_nav_obs_buffers(env_ids)
     env.nav_cmd[env_ids] = 0.0
     env.prev_nav_cmd[env_ids] = 0.0
     env.prev_prev_nav_cmd[env_ids] = 0.0
     env.interp_cmd[env_ids] = 0.0
-    if hasattr(env, "command_generator"):
-        env.command_generator.command[env_ids, :3] = 0.0
+    env.command_generator.command[env_ids, :3] = 0.0
     env.scene.write_data_to_sim()
     env.sim.forward()
-    if hasattr(env, "_update_path_reference_metrics"):
-        env._update_path_reference_metrics(env_ids)
-        env.prev_nav_path_progress[env_ids] = env.nav_path_progress[env_ids]
-    return True
+    env._update_path_reference_metrics(env_ids)
+    env.prev_nav_path_progress[env_ids] = env.nav_path_progress[env_ids]
 
 
 def _default_policy_log_root(agent_cfg) -> str:
@@ -298,11 +267,7 @@ def _resolve_navigation_policy(
 
 
 def _print_navigation_status(env, step_count: int) -> None:
-    terrain_level = 0.0
-    terrain = getattr(env.scene, "terrain", None)
-    if terrain is not None and getattr(terrain, "terrain_levels", None) is not None:
-        terrain_level = torch.mean(terrain.terrain_levels.float()).item()
-
+    terrain_level = torch.mean(env.scene.terrain.terrain_levels.float()).item()
     fields = [
         "[NAV]",
         f"task={args_cli.task}",
@@ -311,13 +276,12 @@ def _print_navigation_status(env, step_count: int) -> None:
         f"mean_final_dist={env.current_final_goal_dist.mean().item():.3f}",
         f"path_level={env.path_difficulty_levels.float().mean().item():.2f}",
     ]
-    if _env_supports_path_guidance(env):
-        fields.extend(
-            [
-                f"path_guidance_level={env.path_guidance_levels.float().mean().item():.2f}",
-                f"path_guidance_weight={env.nav_path_guidance_weight.float().mean().item():.2f}",
-            ]
-        )
+    fields.extend(
+        [
+            f"path_guidance_level={env.path_guidance_levels.float().mean().item():.2f}",
+            f"path_guidance_weight={env.nav_path_guidance_weight.float().mean().item():.2f}",
+        ]
+    )
     fields.extend(
         [
             f"path_refs={env.nav_waypoint_counts.float().mean().item():.1f}",
@@ -344,10 +308,7 @@ def _show_depth_image(env) -> None:
     if data_type.endswith("_noised"):
         depth = depth.clamp(0.0, 1.0)
     else:
-        max_distance = float(getattr(env.noisy_camera.cfg, "max_distance", 2.5))
-        if max_distance <= 0.0 or max_distance > 100.0:
-            max_distance = 2.5
-        depth = (depth / max_distance).clamp(0.0, 1.0)
+        depth = (depth / float(env.noisy_camera.cfg.max_distance)).clamp(0.0, 1.0)
 
     depth_u8 = (depth * 255).to(torch.uint8).cpu().numpy()
     depth_u8 = cv2.resize(
@@ -364,10 +325,7 @@ def play_nav():
     agent_cfg = update_rsl_rl_cfg(agent_cfg, args_cli)
 
     env_cfg = _make_navigation_env_cfg(env_cfg, agent_cfg)
-    terrain_seed = (
-        env_cfg.scene.terrain_generator.seed if env_cfg.scene.terrain_generator is not None else None
-    )
-    print(f"[INFO] Using seed: scene={env_cfg.scene.seed} terrain={terrain_seed}")
+    print(f"[INFO] Using seed: scene={env_cfg.scene.seed} terrain={env_cfg.scene.terrain_generator.seed}")
     camera_cfg = env_cfg.scene.noisy_camera
     if camera_cfg.enable_camera:
         print(
@@ -411,8 +369,8 @@ def play_nav():
                 reset_navigation_policy(dones)
             if torch.any(dones):
                 reset_ids = torch.nonzero(dones, as_tuple=False).flatten()
-                if _apply_navigation_play_overrides(env, reset_ids):
-                    obs, _ = env.get_observations()
+                _apply_navigation_play_overrides(env, reset_ids)
+                obs, _ = env.get_observations()
             step_count += 1
 
             if not args_cli.headless and not args_cli.no_start_goal_vis:

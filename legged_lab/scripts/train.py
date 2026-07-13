@@ -59,6 +59,39 @@ torch.backends.cudnn.allow_tf32 = True
 torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
 
+RunnerClass = type[OnPolicyRunner] | type[AmpOnPolicyRunner]
+RUNNER_CLASSES: dict[str, RunnerClass] = {
+    "OnPolicyRunner": OnPolicyRunner,
+    "AmpOnPolicyRunner": AmpOnPolicyRunner,
+}
+
+
+def _resolve_runner_class(name: str) -> RunnerClass:
+    try:
+        return RUNNER_CLASSES[name]
+    except KeyError as exc:
+        supported = ", ".join(sorted(RUNNER_CLASSES))
+        raise ValueError(f"Unsupported runner class '{name}'. Supported runners: {supported}.") from exc
+
+
+def _clamp_mini_batches_to_env_count(agent_cfg, num_envs: int) -> None:
+    algorithm_cfg = getattr(agent_cfg, "algorithm", None)
+    if algorithm_cfg is None or not hasattr(algorithm_cfg, "num_mini_batches"):
+        return
+
+    num_envs = int(num_envs)
+    num_mini_batches = int(algorithm_cfg.num_mini_batches)
+    if num_envs <= 0:
+        raise ValueError(f"num_envs must be positive, got {num_envs}.")
+    if num_mini_batches <= 0:
+        raise ValueError(f"num_mini_batches must be positive, got {num_mini_batches}.")
+    if num_mini_batches > num_envs:
+        print(
+            f"[INFO] Reducing PPO mini-batches from {num_mini_batches} to {num_envs} "
+            f"because recurrent policies require num_mini_batches <= num_envs."
+        )
+        algorithm_cfg.num_mini_batches = num_envs
+
 
 def _resolve_checkpoint_path(log_root_path: str, agent_cfg) -> str:
     load_model_path = getattr(agent_cfg, "load_model_path", "")
@@ -78,15 +111,16 @@ def _resolve_checkpoint_path(log_root_path: str, agent_cfg) -> str:
 def train():
     runner: OnPolicyRunner | AmpOnPolicyRunner
 
-    env_class_name = args_cli.task
-    env_cfg, agent_cfg = task_registry.get_cfgs(env_class_name)
-    env_class = task_registry.get_task_class(env_class_name)
+    task_name = args_cli.task
+    env_cfg, agent_cfg = task_registry.get_cfgs(task_name)
+    env_class = task_registry.get_task_class(task_name)
 
     if args_cli.num_envs is not None:
         env_cfg.scene.num_envs = args_cli.num_envs
 
     agent_cfg = update_rsl_rl_cfg(agent_cfg, args_cli)
     env_cfg.scene.seed = agent_cfg.seed
+    _clamp_mini_batches_to_env_count(agent_cfg, env_cfg.scene.num_envs)
 
     if args_cli.distributed:
         env_cfg.sim.device = f"cuda:{app_launcher.local_rank}"
@@ -107,7 +141,7 @@ def train():
     if agent_cfg.run_name:
         log_dir += f"_{agent_cfg.run_name}"
     log_dir = os.path.join(log_root_path, log_dir)
-    runner_class: OnPolicyRunner | AmpOnPolicyRunner = eval(agent_cfg.runner_class_name)
+    runner_class = _resolve_runner_class(agent_cfg.runner_class_name)
     runner = runner_class(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
 
     if agent_cfg.resume:

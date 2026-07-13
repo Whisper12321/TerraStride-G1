@@ -19,28 +19,20 @@ _EPS = 1.0e-6
 
 
 def _nav_dt(env: G1NavigationEnv) -> float:
-    if hasattr(env, "nav_step_dt"):
-        return float(env.nav_step_dt)
-    return float(env.step_dt)
+    return float(env.nav_step_dt)
 
 
 def _goal_distance(env: G1NavigationEnv) -> torch.Tensor:
-    if hasattr(env, "current_goal_dist"):
-        return env.current_goal_dist
-    return torch.norm(env.goal_pos_w[:, :2] - env.robot.data.root_pos_w[:, :2], dim=-1)
+    return env.current_goal_dist
 
 
 def _final_goal_distance(env: G1NavigationEnv) -> torch.Tensor:
-    if hasattr(env, "current_final_goal_dist"):
-        return env.current_final_goal_dist
-    if hasattr(env, "final_goal_pos_w"):
-        return torch.norm(env.final_goal_pos_w[:, :2] - env.robot.data.root_pos_w[:, :2], dim=-1)
-    return _goal_distance(env)
+    return env.current_final_goal_dist
 
 
 def _goal_radius(env: G1NavigationEnv, goal_radius: float | None = None) -> float:
     if goal_radius is None:
-        return float(getattr(env.cfg.nav, "goal_reached_threshold", 0.5))
+        return float(env.cfg.nav.goal_reached_threshold)
     return float(goal_radius)
 
 
@@ -53,14 +45,11 @@ def _at_final_goal(env: G1NavigationEnv, goal_radius: float | None = None) -> to
 
 
 def _navigation_success(env: G1NavigationEnv) -> torch.Tensor:
-    return getattr(env, "nav_success_buf", torch.zeros(env.num_envs, dtype=torch.bool, device=env.device))
+    return env.nav_success_buf
 
 
 def _path_difficulty_fraction(env: G1NavigationEnv) -> torch.Tensor:
-    if not hasattr(env, "path_difficulty_levels"):
-        return torch.zeros(env.num_envs, device=env.device)
-    cfg_nav = getattr(getattr(env, "cfg", None), "nav", None)
-    num_levels = max(int(getattr(cfg_nav, "num_path_difficulty_levels", 1)), 1)
+    num_levels = max(int(env.cfg.nav.num_path_difficulty_levels), 1)
     if num_levels <= 1:
         return torch.zeros(env.num_envs, device=env.device)
     levels = env.path_difficulty_levels.float()
@@ -68,8 +57,6 @@ def _path_difficulty_fraction(env: G1NavigationEnv) -> torch.Tensor:
 
 
 def _tracking_final_waypoint(env: G1NavigationEnv) -> torch.Tensor:
-    if not hasattr(env, "nav_waypoint_indices") or not hasattr(env, "nav_waypoint_counts"):
-        return torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
     return env.nav_waypoint_indices >= (env.nav_waypoint_counts - 1)
 
 
@@ -82,30 +69,15 @@ def _yaw_rate_abs(env: G1NavigationEnv) -> torch.Tensor:
 
 
 def _episode_time_s(env: G1NavigationEnv) -> torch.Tensor:
-    if hasattr(env, "low_level_step_dt"):
-        step_dt = float(env.low_level_step_dt)
-    elif hasattr(env, "step_dt"):
-        step_dt = float(env.step_dt)
-    else:
-        step_dt = _nav_dt(env)
-    return env.episode_length_buf.float() * step_dt
+    return env.episode_length_buf.float() * float(env.low_level_step_dt)
 
 
 def _path_subgoal_length_for_time_limit(env: G1NavigationEnv) -> torch.Tensor:
     # Prefer the dense active task path length. nav_path_total_length may be computed from
     # guidance-sparsified references, which can become a direct start-goal segment late in curriculum.
-    if hasattr(env, "nav_path_metric_length"):
-        metric_length = torch.clamp(env.nav_path_metric_length, min=0.0)
-        if hasattr(env, "nav_path_total_length"):
-            sparse_length = torch.clamp(env.nav_path_total_length, min=0.0)
-            return torch.where(metric_length > 0.0, metric_length, sparse_length)
-        return metric_length
-    if hasattr(env, "nav_path_total_length"):
-        return torch.clamp(env.nav_path_total_length, min=0.0)
-    if hasattr(env, "nav_attempt_dist"):
-        return torch.clamp(env.nav_attempt_dist, min=0.0)
-    # Current navigation envs store the path-curriculum sub-goal in final_goal_pos_w.
-    return _final_goal_distance(env)
+    metric_length = torch.clamp(env.nav_path_metric_length, min=0.0)
+    sparse_length = torch.clamp(env.nav_path_total_length, min=0.0)
+    return torch.where(metric_length > 0.0, metric_length, sparse_length)
 
 
 def _goal_still_score(
@@ -156,9 +128,7 @@ def nav_waypoint_progress(
     else:
         min_value = 0.0
     progress_rate = torch.clamp(progress_rate, min=min_value, max=float(max_progress_speed))
-    waypoint_switched = (
-        getattr(env, "waypoint_reached_step_buf", torch.zeros(env.num_envs, device=env.device)) > 0.0
-    ) | (getattr(env, "final_goal_reached_step_buf", torch.zeros(env.num_envs, device=env.device)) > 0.0)
+    waypoint_switched = (env.waypoint_reached_step_buf > 0.0) | (env.final_goal_reached_step_buf > 0.0)
     return torch.where(waypoint_switched, torch.zeros_like(progress_rate), progress_rate)
 
 
@@ -173,8 +143,6 @@ def nav_final_goal_progress(
     Keep this low-weight in mazes: it provides a deployment-like compass bias without requiring
     non-deployable path-reference observations.
     """
-    if not hasattr(env, "prev_final_goal_dist"):
-        return torch.zeros(env.num_envs, device=env.device)
     progress = env.prev_final_goal_dist - _final_goal_distance(env)
     progress_rate = progress / max(_nav_dt(env), _EPS)
     min_value = -float(max_negative_speed) if allow_negative else 0.0
@@ -193,13 +161,11 @@ def nav_path_progress(
     This uses the projection of the robot onto the planned path instead of discrete hidden
     waypoint-hit events, so it provides smoother guidance and can be annealed away.
     """
-    if not hasattr(env, "nav_path_progress") or not hasattr(env, "prev_nav_path_progress"):
-        return torch.zeros(env.num_envs, device=env.device)
     progress = env.nav_path_progress - env.prev_nav_path_progress
     progress_rate = progress / max(_nav_dt(env), _EPS)
     min_value = -float(max_negative_speed) if allow_negative else 0.0
     reward = torch.clamp(progress_rate, min=min_value, max=float(max_progress_speed))
-    if use_guidance_weight and hasattr(env, "nav_path_guidance_weight"):
+    if use_guidance_weight:
         reward = reward * env.nav_path_guidance_weight
     return reward
 
@@ -211,10 +177,8 @@ def nav_path_lateral_deviation(
     use_guidance_weight: bool = True,
 ) -> torch.Tensor:
     """Penalty magnitude for drifting away from the privileged path reference."""
-    if not hasattr(env, "nav_path_lateral_error"):
-        return torch.zeros(env.num_envs, device=env.device)
     deviation = torch.clamp(env.nav_path_lateral_error / max(float(deviation_scale), _EPS), max=float(max_deviation))
-    if use_guidance_weight and hasattr(env, "nav_path_guidance_weight"):
+    if use_guidance_weight:
         deviation = deviation * env.nav_path_guidance_weight
     return deviation
 
@@ -225,14 +189,12 @@ def nav_waypoint_reached(env: G1NavigationEnv) -> torch.Tensor:
     RewardManager multiplies by nav dt, so return an event rate to make the configured weight the
     actual per-waypoint bonus.
     """
-    events = getattr(env, "waypoint_reached_step_buf", torch.zeros(env.num_envs, device=env.device))
-    return events / max(_nav_dt(env), _EPS)
+    return env.waypoint_reached_step_buf / max(_nav_dt(env), _EPS)
 
 
 def nav_final_goal_reached(env: G1NavigationEnv) -> torch.Tensor:
     """One-shot bonus for first reaching the final goal."""
-    events = getattr(env, "final_goal_reached_step_buf", torch.zeros(env.num_envs, device=env.device))
-    return events / max(_nav_dt(env), _EPS)
+    return env.final_goal_reached_step_buf / max(_nav_dt(env), _EPS)
 
 
 def nav_prefix_goal_progress(
@@ -255,10 +217,9 @@ def nav_prefix_goal_reached(
     The multiplier can scale this event with path curriculum difficulty while keeping the
     success condition itself unchanged.
     """
-    events = getattr(env, "final_goal_reached_step_buf", torch.zeros(env.num_envs, device=env.device))
     difficulty_fraction = _path_difficulty_fraction(env)
     multiplier = float(min_multiplier) + difficulty_fraction * (float(max_multiplier) - float(min_multiplier))
-    return events * multiplier / max(_nav_dt(env), _EPS)
+    return env.final_goal_reached_step_buf * multiplier / max(_nav_dt(env), _EPS)
 
 
 def nav_desired_speed(env: G1NavigationEnv, desired_speed: float = 0.6, speed_sigma: float = 0.3) -> torch.Tensor:
@@ -454,12 +415,7 @@ def nav_command_acceleration(
     lin_weight: float = 1.0,
     yaw_weight: float = 1.5,
 ) -> torch.Tensor:
-    """Second-difference command smoothness term.
-
-    If the environment does not expose prev_prev_nav_cmd yet, this term safely returns zero.
-    """
-    if not hasattr(env, "prev_prev_nav_cmd"):
-        return torch.zeros(env.num_envs, device=env.device)
+    """Second-difference command smoothness term."""
     acc = env.nav_cmd - 2.0 * env.prev_nav_cmd + env.prev_prev_nav_cmd
     return float(lin_weight) * torch.sum(torch.square(acc[:, :2]), dim=-1) + float(yaw_weight) * torch.square(acc[:, 2])
 
@@ -524,7 +480,6 @@ def nav_agile(env: G1NavigationEnv, vmax: float = 1.0, sigma_tight: float = 0.5)
 def nav_stall(env: G1NavigationEnv, sigma_soft: float = 2.0, static_speed_threshold: float = 0.10) -> torch.Tensor:
     far_from_goal = _goal_distance(env) > float(sigma_soft)
     static = _planar_speed(env) < float(static_speed_threshold)
-    success = getattr(env, "nav_success_buf", torch.zeros(env.num_envs, dtype=torch.bool, device=env.device))
-    waypoint_event = getattr(env, "waypoint_reached_step_buf", torch.zeros(env.num_envs, device=env.device)) > 0.0
-    final_event = getattr(env, "final_goal_reached_step_buf", torch.zeros(env.num_envs, device=env.device)) > 0.0
-    return (far_from_goal & static & ~success & ~waypoint_event & ~final_event).float()
+    waypoint_event = env.waypoint_reached_step_buf > 0.0
+    final_event = env.final_goal_reached_step_buf > 0.0
+    return (far_from_goal & static & ~env.nav_success_buf & ~waypoint_event & ~final_event).float()

@@ -89,7 +89,6 @@ class FootholdPlannerMixin:
         )
         self.num_cells = self.ny * self.nx
         self.vis_steepness_buffer = torch.zeros(self.num_envs * self.num_cells, 3, device=self.device)
-        print(self.num_cells, self.ny, self.nx)
 
         self.single_planner_point_num = 0
         self.marker_indices = torch.cat(
@@ -247,15 +246,6 @@ class FootholdPlannerMixin:
         ray_hits_xy = ray_hits_clean[..., :2]
         ray_hits_z = ray_hits_clean[..., 2]
 
-        if torch.isnan(ray_hits_z).any():
-            print("ray_hits_z is nan: ", ray_hits_z)
-        if torch.isinf(ray_hits_z).any():
-            print("ray_hits_z is inf: ", ray_hits_z)
-        if torch.isnan(ray_hits_xy).any():
-            print("ray_hits_xy is nan: ", ray_hits_xy)
-        if torch.isinf(ray_hits_xy).any():
-            print("ray_hits_xy is inf: ", ray_hits_xy)
-
         xy_map = ray_hits_xy.reshape(n, self.ny, self.nx, 2)
         height_map = ray_hits_z.reshape(n, self.ny, self.nx)
 
@@ -321,10 +311,6 @@ class FootholdPlannerMixin:
             sigma_T,
             sigma_t,
         )
-        if torch.isnan(optimal_point).any():
-            print("optimal_point is nan: ", optimal_point)
-        if torch.isinf(optimal_point).any():
-            print("optimal_point is inf: ", optimal_point)
 
         self.desired_foothold[envs_ids] = optimal_point
         desired_rel_w = optimal_point - root_pos
@@ -333,32 +319,31 @@ class FootholdPlannerMixin:
         ref_trajectory = self._compute_ref_trajectory(envs_ids)
         self.ref_traj_points[envs_ids] = ref_trajectory
 
-        if torch.isnan(ref_trajectory).any():
-            print("ref_trajectory is nan: ", ref_trajectory)
-        if torch.isinf(ref_trajectory).any():
-            print("ref_trajectory is inf: ", ref_trajectory)
-
-        self.single_planner_point_num = (iy_clamped.numel() // n) * (ix_clamped.numel() // n)
-        self.vis_foothold_points_buffer = torch.zeros(
-            self.num_envs + self.num_envs * self.single_planner_point_num, 3, device=self.device
-        )
-        self.marker_indices = torch.cat(
-            [
-                torch.zeros(self.num_envs, dtype=torch.long),
-                torch.ones(self.num_envs * self.single_planner_point_num, dtype=torch.long),
-                torch.full((self.num_envs * self.num_cells,), 2, dtype=torch.long),
-                torch.full((self.num_envs,), 3, dtype=torch.long),
-                torch.full(
-                    (
-                        self.num_envs
-                        * int(self.cfg.gait.gait_cycle * self.cfg.gait.gait_air_ratio_l / self.step_dt),
+        planner_point_num = flat_indices.shape[1]
+        if planner_point_num != self.single_planner_point_num:
+            self.single_planner_point_num = planner_point_num
+            self.vis_foothold_points_buffer = torch.zeros(
+                self.num_envs + self.num_envs * self.single_planner_point_num, 3, device=self.device
+            )
+            self.marker_indices = torch.cat(
+                [
+                    torch.zeros(self.num_envs, dtype=torch.long),
+                    torch.ones(self.num_envs * self.single_planner_point_num, dtype=torch.long),
+                    torch.full((self.num_envs * self.num_cells,), 2, dtype=torch.long),
+                    torch.full((self.num_envs,), 3, dtype=torch.long),
+                    torch.full(
+                        (
+                            self.num_envs
+                            * int(self.cfg.gait.gait_cycle * self.cfg.gait.gait_air_ratio_l / self.step_dt),
+                        ),
+                        4,
+                        dtype=torch.long,
                     ),
-                    4,
-                    dtype=torch.long,
-                ),
-                torch.full((self.num_envs,), 5, dtype=torch.long),
-            ]
-        ).tolist()
+                    torch.full((self.num_envs,), 5, dtype=torch.long),
+                ]
+            ).tolist()
+        else:
+            self.vis_foothold_points_buffer.zero_()
 
         self.vis_foothold_points_buffer[envs_ids, 0] = target_xy[:, 0]
         self.vis_foothold_points_buffer[envs_ids, 1] = target_xy[:, 1]
@@ -409,30 +394,27 @@ class FootholdPlannerMixin:
         向量化清洗射线数据：用每个环境的有效点均值填充 NaN/Inf。
         """
         valid = torch.isfinite(ray_hits).all(dim=-1)
-        valid_float = valid.unsqueeze(-1).float()
 
-        sum_valid = (ray_hits * valid_float).sum(dim=1)
+        sum_valid = torch.where(valid.unsqueeze(-1), ray_hits, torch.zeros_like(ray_hits)).sum(dim=1)
         count_valid = valid.sum(dim=1, keepdim=True).float()
 
         mean_valid = sum_valid / count_valid.clamp(min=1)
 
         safe_sensor_pos = sensor_pos.clone()
         sensor_valid = torch.isfinite(safe_sensor_pos).all(dim=-1)
-        default_safe_pos = torch.tensor([0.0, 0.0, 0.9], device=safe_sensor_pos.device).expand_as(safe_sensor_pos)
+        default_safe_pos = safe_sensor_pos.new_tensor([0.0, 0.0, 0.9]).expand_as(safe_sensor_pos)
         safe_sensor_pos = torch.where(sensor_valid.unsqueeze(-1), safe_sensor_pos, default_safe_pos)
 
         fill_values = torch.where(count_valid > 0, mean_valid, safe_sensor_pos)
 
-        fill_values_valid = torch.isfinite(fill_values).all(dim=-1)
-        if not torch.all(fill_values_valid):
-            default_fill = torch.tensor([0.0, 0.0, 0.9], device=fill_values.device).expand_as(fill_values)
-            fill_values = torch.where(fill_values_valid.unsqueeze(-1), fill_values, default_fill)
+        fill_values_valid = torch.isfinite(fill_values).all(dim=-1, keepdim=True)
+        default_fill = fill_values.new_tensor([0.0, 0.0, 0.9]).expand_as(fill_values)
+        fill_values = torch.where(fill_values_valid, fill_values, default_fill)
 
         ray_hits_clean = torch.where(valid.unsqueeze(-1), ray_hits, fill_values.unsqueeze(1))
 
-        if not torch.isfinite(ray_hits_clean).all():
-            default_clean = torch.tensor([0.0, 0.0, 0.9], device=ray_hits_clean.device).expand_as(ray_hits_clean)
-            ray_hits_clean = torch.where(torch.isfinite(ray_hits_clean), ray_hits_clean, default_clean)
+        default_clean = ray_hits_clean.new_tensor([0.0, 0.0, 0.9]).expand_as(ray_hits_clean)
+        ray_hits_clean = torch.where(torch.isfinite(ray_hits_clean), ray_hits_clean, default_clean)
 
         return ray_hits_clean
 
@@ -453,23 +435,6 @@ class FootholdPlannerMixin:
             l / (1 + exp_sigma) - W_nom / (1 - exp_sigma),
         )
 
-        if torch.isnan(b_nom_x).any():
-            print("b_nom_x is nan: ", b_nom_x)
-        if torch.isinf(b_nom_x).any():
-            print("b_nom_x is inf: ", b_nom_x)
-        if torch.isnan(b_nom_y).any():
-            print("b_nom_y is nan: ", b_nom_y)
-        if torch.isinf(b_nom_y).any():
-            print("b_nom_y is inf: ", b_nom_y)
-        if torch.isnan(sigma_T).any():
-            print("sigma_T is nan: ", sigma_T)
-        if torch.isinf(sigma_T).any():
-            print("sigma_T is inf: ", sigma_T)
-        if torch.isnan(sigma_t).any():
-            print("sigma_t is nan: ", sigma_t)
-        if torch.isinf(sigma_t).any():
-            print("sigma_t is inf: ", sigma_t)
-
         return b_nom_x, b_nom_y, sigma_T, sigma_t
 
     def _compute_slope(self, env_ids, target_world, xy_flat, height_flat):
@@ -488,10 +453,6 @@ class FootholdPlannerMixin:
         slope = torch.where(dh > 1e-4, dz / dh, torch.full_like(dz, float("inf")))
         slope = torch.where(self.first_foothold_flag[env_ids], 1e-3, slope)
         slope = torch.clamp(slope, -1.0, 1.0)
-        if torch.isnan(slope).any():
-            print("slope is nan: ", slope)
-        if torch.isinf(slope).any():
-            print("slope is inf: ", slope)
         return slope
 
     def _compute_steepness_map(self, height_map):
@@ -526,10 +487,6 @@ class FootholdPlannerMixin:
 
         max_steepness = 1.0
         steepness = torch.clamp(steepness, 0.0, max_steepness) / max_steepness
-        if torch.isnan(steepness).any():
-            print("steepness is nan: ", steepness)
-        if torch.isinf(steepness).any():
-            print("steepness is inf: ", steepness)
         return steepness
 
     def _compute_edge_distance_map(self, height_map, xy_map):

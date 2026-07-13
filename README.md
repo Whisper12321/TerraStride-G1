@@ -1,4 +1,4 @@
-# G1 Obstacle Navigation and Locomotion
+# G1 TerrainNav Lab
 
 [![IsaacSim](https://img.shields.io/badge/IsaacSim-4.5.0-silver.svg)](https://docs.omniverse.nvidia.com/isaacsim/latest/overview.html)
 [![Isaac Lab](https://img.shields.io/badge/IsaacLab-2.1.0-silver)](https://isaac-sim.github.io/IsaacLab)
@@ -7,22 +7,22 @@
 [![Platform](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://releases.ubuntu.com/22.04/)
 [![License](https://img.shields.io/badge/license-BSD--3-yellow.svg)](LICENSE)
 
-This repository is built on top of LeggedLab, IsaacLab, and RSL-RL. It focuses on Unitree G1 12-DOF lower-body locomotion, high-level navigation, perception-aware obstacle traversal, and MuJoCo sim2sim validation.
+G1 TerrainNav Lab is a LeggedLab/IsaacLab project for Unitree G1 12-DOF lower-body locomotion and navigation. The repository contains the training tasks, MuJoCo terrain scene, and sim2sim tools used to evaluate obstacle traversal with depth and height-scan perception.
 
-## Demo
+## Demo (Speed 2x Normal Speed)
 
 <p align="center">
   <img src="docs/g1_multiview_hq_speed_2x.gif" width="900" alt="G1 obstacle navigation demo">
 </p>
 
-Main features:
+Scope:
 
-- Low-level G1 velocity-tracking locomotion policy.
-- High-level navigation policy that outputs velocity commands and runs a frozen low-level locomotion policy internally.
-- Height-scan and depth-camera perception inputs.
-- MuJoCo maze-style sim2sim scene with start and goal markers, walls, rough terrain, full-corridor stairs, and full-corridor ramps.
-- Multi-view sim2sim visualization and recording: world overview, forward third-person follow camera, and raw grayscale depth-camera view.
-- Optional automatic stop when the robot reaches the target.
+- `g1_locomotion`: low-level velocity tracking for the G1 lower body.
+- `g1_navigation`: high-level navigation that produces velocity commands for the frozen locomotion policy.
+- Height-scan and depth-camera observations for terrain-aware navigation.
+- MuJoCo scene with start/goal markers, walls, rough terrain, full-corridor stairs, and full-corridor ramps.
+- Multi-view MuJoCo recording: world overview, forward third-person follow view, and raw grayscale depth view.
+- Goal-triggered stop for sim2sim evaluation and video capture.
 
 ## Repository Structure
 
@@ -52,28 +52,142 @@ Registered tasks:
 
 ## Installation
 
-Recommended environment:
+The current codebase has been tested with:
 
-- Ubuntu 22.04
-- Python 3.10
-- NVIDIA GPU with a working CUDA driver
-- Isaac Sim 4.5.0
-- IsaacLab 2.1.0
-- MuJoCo 3.3.2
+| Component | Version |
+| --- | --- |
+| OS | Ubuntu 22.04 |
+| Python | 3.10 |
+| Isaac Sim | 4.5.0 |
+| IsaacLab | 2.1.0 |
+| MuJoCo | 3.3.2 |
+| RSL-RL | Bundled in `rsl_rl/` |
 
-Install Isaac Sim and IsaacLab first by following the official IsaacLab installation guide. After confirming that the active Python environment can import `isaaclab`, install this project:
+Use the same Isaac Sim and IsaacLab versions unless you have checked the API changes in your target release.
+
+### 1. Install System Packages
+
+Install basic build and rendering dependencies:
 
 ```bash
-pip install -e .
-pip install -e rsl_rl
-pip install opencv-python
+sudo apt update
+sudo apt install -y git git-lfs build-essential cmake \
+  libgl1 libglib2.0-0 libx11-6 libegl1 mesa-utils
 ```
 
-For MuJoCo rendering on a headless server, you may need:
+Initialize Git LFS if you plan to manage large assets outside normal Git history:
+
+```bash
+git lfs install
+```
+
+### 2. Create a Python Environment
+
+Create a clean Conda environment:
+
+```bash
+conda create -n g1-terrainnav python=3.10 -y
+conda activate g1-terrainnav
+python -m pip install --upgrade pip setuptools wheel
+```
+
+### 3. Install Isaac Sim and IsaacLab
+
+Install Isaac Sim 4.5.0 and IsaacLab 2.1.0 in the same Python environment. Follow the IsaacLab installation guide for your Isaac Sim installation method, then install the matching IsaacLab release.
+
+A typical IsaacLab source installation looks like:
+
+```bash
+git clone --branch v2.1.0 https://github.com/isaac-sim/IsaacLab.git
+cd IsaacLab
+./isaaclab.sh --install
+```
+
+After installation, verify that IsaacLab is importable from the active environment:
+
+```bash
+python -c "import isaaclab; print('IsaacLab import OK')"
+```
+
+If this command fails, fix the Isaac Sim / IsaacLab installation before installing this project.
+
+### 4. Clone and Install This Repository
+
+Clone the repository, then install the project package and bundled RSL-RL package in editable mode:
+
+```bash
+git clone https://github.com/<your-user>/G1-TerrainNav-Lab.git
+cd G1-TerrainNav-Lab
+
+python -m pip install -e .
+python -m pip install -e rsl_rl
+python -m pip install opencv-python tensorboard
+```
+
+The root `setup.py` installs the project package and runtime dependencies including `mujoco==3.3.2`, `mujoco-python-viewer`, `pynput`, and `matplotlib`.
+
+### 5. Configure MuJoCo Rendering
+
+For desktop machines with a display server, MuJoCo usually works without extra configuration.
+
+For headless servers, use EGL:
 
 ```bash
 export MUJOCO_GL=egl
 ```
+
+You can add this line to `~/.bashrc` or your job script if you always run on a headless GPU server.
+
+Verify MuJoCo and OpenCV imports:
+
+```bash
+python -c "import mujoco, cv2; print('MuJoCo', mujoco.__version__); print('OpenCV import OK')"
+```
+
+### 6. Prepare Policy Checkpoints
+
+Training logs and checkpoints are intentionally ignored by Git through `.gitignore`:
+
+```text
+logs/
+outputs/
+```
+
+Prepare these artifacts locally before running navigation or sim2sim:
+
+| Artifact | Expected path example | How to obtain |
+| --- | --- | --- |
+| Low-level locomotion policy | `logs/g1_locomotion/<run>/exported/policy.pt` | Train `g1_locomotion`, or provide a compatible exported policy |
+| High-level navigation checkpoint | `logs/g1_navigation/<run>/model_<iter>.pt` | Train `g1_navigation`, or provide a compatible checkpoint |
+| Demo videos | `outputs/` | Generated by the sim2sim recording commands |
+
+When running scripts, pass policy paths explicitly unless you use the repository-relative defaults:
+
+```bash
+--policy logs/g1_locomotion/<run>/exported/policy.pt
+--nav-policy logs/g1_navigation/<run>/model_<iter>.pt
+```
+
+### 7. Verify the Project Installation
+
+Run a Python import check:
+
+```bash
+python -c "import torch, mujoco, cv2, isaaclab; import legged_lab.envs; print('G1 TerrainNav Lab import OK')"
+```
+
+Check that the main task registration file is syntactically valid:
+
+```bash
+python -m py_compile \
+  legged_lab/envs/__init__.py \
+  legged_lab/envs/g1/g1_locomotion_cfg.py \
+  legged_lab/envs/g1/g1_locomotion_env.py \
+  legged_lab/envs/g1/g1_navigation_cfg.py \
+  legged_lab/envs/g1/g1_navigation_env.py
+```
+
+After these checks pass, proceed to training or playback.
 
 ## Training
 
@@ -103,7 +217,7 @@ python legged_lab/scripts/train.py \
   --num_envs=1024
 ```
 
-The navigation environment uses a frozen low-level locomotion policy. If automatic policy discovery fails, specify the low-level policy path in the config or playback command.
+The navigation environment uses a frozen low-level locomotion policy. If policy discovery fails, pass the low-level policy path explicitly.
 
 ## IsaacLab Playback
 
@@ -271,7 +385,50 @@ To adjust the ramp height or length:
 - Edit `route_gate_ramp_up`, `route_gate_ramp_platform`, and `route_gate_ramp_down`.
 - `quat` controls the slope angle, while `size` and `pos` control the ramp length, width, and height.
 
-For a convincing locomotion demonstration, stairs and ramps should fill the full corridor width and should not overlap rough hfield terrain.
+Keep stairs and ramps full-width if the evaluation should force the robot to traverse them. Avoid overlap between these route geoms and rough hfield terrain.
+
+## Troubleshooting
+
+IsaacLab import fails:
+
+- Confirm that the active Conda environment is the same one used to install Isaac Sim and IsaacLab.
+- Run `python -c "import isaaclab"` before installing this repository.
+- Keep Isaac Sim 4.5.0 and IsaacLab 2.1.0 unless you have verified compatibility with newer APIs.
+
+MuJoCo rendering fails on a server:
+
+- Set `MUJOCO_GL=egl`.
+- Make sure the machine has a working NVIDIA driver and EGL support.
+- For video-only runs, add `--no-render`, but offscreen rendering must still work.
+
+Robot does not move in MuJoCo:
+
+- Without `--navigation`, the sim2sim script expects joystick or keyboard velocity commands.
+- If `--no-joystick` is used without `--navigation`, the command is zero and the robot will stand still.
+- For autonomous navigation, always pass `--navigation` and a valid `--nav-policy`.
+
+Navigation policy cannot be found:
+
+- The script searches `logs/g1_navigation/*/model_*.pt` only when `--nav-policy` is omitted.
+- Since `logs/` is ignored by Git, cloned repositories do not include trained checkpoints.
+- Train `g1_navigation` locally or provide a checkpoint explicitly with `--nav-policy`.
+
+Video output is not clear enough:
+
+- Increase `--video-panel-width` and `--video-panel-height`.
+- For MP4 output, use `--video-codec mp4v`.
+- If `ffmpeg` is available, post-process the generated video with H.264/CRF for better compression quality.
+
+## Reproducibility Checklist
+
+Before reporting or comparing results, record:
+
+- Git commit hash of this repository.
+- Isaac Sim, IsaacLab, MuJoCo, Python, PyTorch, and CUDA versions.
+- Low-level policy path passed to `--policy`.
+- Navigation checkpoint path passed to `--nav-policy`.
+- MuJoCo XML scene path passed to `--xml`.
+- Full sim2sim command used for evaluation or video recording.
 
 ## License
 

@@ -366,8 +366,10 @@ class G1NavigationEnv(G1LocomotionEnv):
             active_ids = (~done_pending).nonzero(as_tuple=False).flatten()
             if len(active_ids) == 0:
                 break
-            active_mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-            active_mask[active_ids] = True
+            active_mask = None
+            if len(active_ids) != self.num_envs:
+                active_mask = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+                active_mask[active_ids] = True
 
             ratio = float(substep + 1) / float(self.low_level_steps_per_nav_step)
             if self.cfg.nav.command_interpolation == "linear":
@@ -394,8 +396,11 @@ class G1NavigationEnv(G1LocomotionEnv):
                 self.event_manager.apply(mode="interval", dt=self.low_level_step_dt)
 
             reset_now, self.time_out_buf = self.check_reset()
-            reset_now &= active_mask
-            time_out_now = self.time_out_buf & active_mask
+            if active_mask is not None:
+                reset_now &= active_mask
+                time_out_now = self.time_out_buf & active_mask
+            else:
+                time_out_now = self.time_out_buf
             goal_reached_now = self._check_goal_reached(active_ids)
             if self.cfg.nav.terminate_on_goal:
                 reset_now |= goal_reached_now
@@ -416,7 +421,7 @@ class G1NavigationEnv(G1LocomotionEnv):
         self._update_path_reference_metrics()
 
         # Reward is computed by RewardManager only, at the high-level step interval.
-        reward_buf = self.reward_manager.compute(self.nav_step_dt) # 这里应该是用locomotion的频率计算？
+        reward_buf = self.reward_manager.compute(self.nav_step_dt)
 
         active_ids = (~self.reset_buf).nonzero(as_tuple=False).flatten()
         if len(active_ids) > 0:
@@ -439,14 +444,14 @@ class G1NavigationEnv(G1LocomotionEnv):
         active_mask: torch.Tensor | None = None,
     ) -> None:
         """Apply one locomotion control step using the same mechanics as the source locomotion env."""
-        if active_mask is not None and not bool(torch.all(active_mask)):
+        if active_mask is not None:
             low_level_action = low_level_action.clone()
             low_level_action[~active_mask] = self.action[~active_mask]
 
-        self.prev_action = self.action.clone()
+        self.prev_action.copy_(self.action)
         delayed_actions = self.action_buffer.compute(low_level_action)
         next_action = torch.clip(delayed_actions, -self.clip_actions, self.clip_actions).to(self.device)
-        if active_mask is not None and not bool(torch.all(active_mask)):
+        if active_mask is not None:
             self.action = torch.where(active_mask.unsqueeze(-1), next_action, self.action)
         else:
             self.action = next_action
@@ -473,7 +478,7 @@ class G1NavigationEnv(G1LocomotionEnv):
 
         self.avg_feet_force_per_step /= self.cfg.sim.decimation
         self.avg_feet_speed_per_step /= self.cfg.sim.decimation
-        if active_mask is not None and not bool(torch.all(active_mask)):
+        if active_mask is not None:
             active_scale = active_mask.to(dtype=self.avg_feet_force_per_step.dtype).unsqueeze(-1)
             self.avg_feet_force_per_step *= active_scale
             self.avg_feet_speed_per_step *= active_scale

@@ -212,11 +212,15 @@ class PPO:
         else:
             mean_symmetry_loss = None
 
+        num_mini_batches = int(self.num_mini_batches)
+        if self.policy.is_recurrent:
+            num_mini_batches = min(num_mini_batches, self.storage.num_envs)
+
         # generator for mini batches
         if self.policy.is_recurrent:
-            generator = self.storage.recurrent_mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
+            generator = self.storage.recurrent_mini_batch_generator(num_mini_batches, self.num_learning_epochs)
         else:
-            generator = self.storage.mini_batch_generator(self.num_mini_batches, self.num_learning_epochs)
+            generator = self.storage.mini_batch_generator(num_mini_batches, self.num_learning_epochs)
 
         # iterate over batches
         for (
@@ -414,7 +418,7 @@ class PPO:
                 mean_symmetry_loss += symmetry_loss.item()
 
         # -- For PPO
-        num_updates = self.num_learning_epochs * self.num_mini_batches
+        num_updates = self.num_learning_epochs * num_mini_batches
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
         mean_entropy /= num_updates

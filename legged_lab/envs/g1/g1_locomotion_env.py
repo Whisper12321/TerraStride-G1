@@ -139,7 +139,7 @@ class G1LocomotionEnv(FootholdPlannerMixin, VecEnv):
         self.clip_actions = self.cfg.normalization.clip_actions
         self.clip_obs = self.cfg.normalization.clip_observations
 
-        # 新增：将 action_scale 从列表转换为张量并扩展维度
+        # 将 action_scale 转成支持 batch 广播的张量。
         self.action_scale = torch.tensor(
             self.cfg.robot.action_scale, 
             device=self.device, 
@@ -248,7 +248,7 @@ class G1LocomotionEnv(FootholdPlannerMixin, VecEnv):
             self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False
         )
         # 添加：初始化上一步动作缓冲区（与当前动作形状相同）
-        self.prev_action = torch.zeros_like(self.action)  # 关键：新增prev_action属性
+        self.prev_action = torch.zeros_like(self.action)
         
         # 平均脚部力和速度缓冲区
         self.avg_feet_force_per_step = torch.zeros(
@@ -361,33 +361,25 @@ class G1LocomotionEnv(FootholdPlannerMixin, VecEnv):
             # 1. 提取原始数据（保留多射线维度，不做均值压缩）
             sensor_z = self.height_scanner.data.pos_w[:, 2].unsqueeze(1)  # [num_envs, 1]：每个环境1个传感器z坐标
             ray_hits_w = self.height_scanner.data.ray_hits_w  # [num_envs, num_rays, 3]：每个环境的每条射线的世界坐标
-            ray_hits_z = ray_hits_w[..., 2]  # 【关键】保留多射线维度：[num_envs, num_rays]（不unsqueeze，直接2维，对应每个射线点）
+            ray_hits_z = ray_hits_w[..., 2]  # [num_envs, num_rays]
             
             # 2. 处理无效数据（NaN/无穷大）：按环境填充，保留有效射线的原始值
             valid_mask = torch.isfinite(ray_hits_z)  # [num_envs, num_rays]：标记有效射线点
-            if not torch.all(valid_mask):
-                # 对每个环境单独填充（避免跨环境污染，保留单环境内射线的真实性）
-                for env_idx in range(ray_hits_z.shape[0]):
-                    env_valid_mask = valid_mask[env_idx]  # 当前环境的有效射线标记
-                    env_valid_values = ray_hits_z[env_idx][env_valid_mask]  # 当前环境的有效射线z值
-                    if len(env_valid_values) > 0:
-                        # 用当前环境有效射线的均值填充无效射线（不改变有效射线的原始值）
-                        ray_hits_z[env_idx][~env_valid_mask] = torch.mean(env_valid_values)
-                    else:
-                        # 兜底：当前环境无有效射线，用传感器z坐标填充（符合物理逻辑）
-                        ray_hits_z[env_idx] = sensor_z[env_idx].item()
-            # print("ray_hits_z = ",ray_hits_z.shape)
+            valid_counts = valid_mask.sum(dim=1, keepdim=True)
+            valid_sum = torch.where(valid_mask, ray_hits_z, torch.zeros_like(ray_hits_z)).sum(dim=1, keepdim=True)
+            valid_mean = valid_sum / torch.clamp(valid_counts, min=1)
+            fill_values = torch.where(valid_counts > 0, valid_mean, sensor_z)
+            ray_hits_z = torch.where(valid_mask, ray_hits_z, fill_values)
             # 3. 计算高度差（保留多射线维度，广播机制自动兼容）
             # sensor_z [num_envs,1] → 广播为 [num_envs, num_rays]，每条射线对应同一个环境的传感器z
             height_diff = sensor_z - ray_hits_z - self.cfg.normalization.height_scan_offset  # 结果：[num_envs, num_rays]
             
-            # 4. 异常值限制（关键！避免单个射线点的极端值污染观测）
+            # 4. 异常值限制（避免单个射线点的极端值污染观测）
             # 按实际地形调整范围（比如±1米，确保每个射线点的高度差合理）
             height_diff = torch.clamp(height_diff, min=0.0, max=1.0)
             
             # 5. 缩放（将高度差映射到观测所需范围，比如±1）
             height_scan = height_diff * self.obs_scales.height_scan  # 结果：[num_envs, num_rays]
-            # print("height_scan=",height_scan.reshape(11,17))
             #-------------------------------------------------------------------------
             # 将高度扫描数据添加到评论家观测
             critic_obs = torch.cat([critic_obs, height_scan], dim=-1)
@@ -469,15 +461,14 @@ class G1LocomotionEnv(FootholdPlannerMixin, VecEnv):
             self.reset_buf: 每个环境的重置标志（True表示需要重置）
             self.extras: 额外信息（日志、观测等）
         """
-        # 1. 新增：先缓存当前动作到prev_action（在更新当前动作之前）
-        self.prev_action = self.action.clone()  # 关键：保存上一步动作
+        # 缓存上一时刻动作，供动作平滑类奖励使用。
+        self.prev_action.copy_(self.action)
         # 计算延迟后的动作（模拟动作执行延迟）
         delayed_actions = self.action_buffer.compute(actions)
         # 裁剪动作到指定范围并移动到目标设备
         self.action = torch.clip(delayed_actions, -self.clip_actions, self.clip_actions).to(self.device)
 
         # 将动作转换为关节目标位置（动作缩放 + 默认关节位置）
-        # 修正：使用扩展后的 action_scale 张量，并扩展 default_joint_pos 维度
         default_joint_pos = self.robot.data.default_joint_pos  # 形状 [1, num_joints]
 
         joint_actions = self.action[:, :self.num_joint_actions]
@@ -485,12 +476,8 @@ class G1LocomotionEnv(FootholdPlannerMixin, VecEnv):
 
 
         # 重置脚部力和速度的平均缓冲区
-        self.avg_feet_force_per_step = torch.zeros(
-            self.num_envs, len(self.feet_cfg.body_ids), dtype=torch.float, device=self.device, requires_grad=False
-        )
-        self.avg_feet_speed_per_step = torch.zeros(
-            self.num_envs, len(self.feet_cfg.body_ids), dtype=torch.float, device=self.device, requires_grad=False
-        )
+        self.avg_feet_force_per_step.zero_()
+        self.avg_feet_speed_per_step.zero_()
 
         # 执行多次物理仿真步（根据减速倍数，如decimation=4表示4次物理步对应1次环境步）
         for _ in range(self.cfg.sim.decimation):
@@ -544,16 +531,6 @@ class G1LocomotionEnv(FootholdPlannerMixin, VecEnv):
         self.extras["observations"] = {"critic": critic_obs}
 
         self.finalize_foothold_planner_step()
-
-        if torch.isnan(reward_buf).any():
-            print("reward is nan: ", reward_buf)
-        if torch.isinf(reward_buf).any():
-            print("reward is inf: ", reward_buf)
-        
-        if torch.isnan(self.action).any():
-            print("action is nan: ", self.action)
-        if torch.isinf(self.action).any():
-            print("action is inf: ", self.action)
 
         return actor_obs, reward_buf, self.reset_buf, self.extras
 

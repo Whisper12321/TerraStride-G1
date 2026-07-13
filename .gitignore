@@ -1,12 +1,22 @@
-*.egg-info
-*.pyc
-.vscode
-outputs
-logs
-run_bash.sh
-wandb
-MUJOCO_LOG.TXT
+# Python build/cache files
+__pycache__/
+*.py[cod]
+*.egg-info/
+LeggedLab.egg-info/
+rsl_rl/rsl_rl_lib.egg-info/
+
+# Local editor and assistant state
+.agents/
+.codex/
 .history
+.marscode/
+.vscode/
+.git_broken_backup/
+
+# Training, evaluation, and generated outputs
 logs/
 outputs/
-.git_broken_backup/
+wandb/
+tmp/
+run_bash.sh
+MUJOCO_LOG.TXT
