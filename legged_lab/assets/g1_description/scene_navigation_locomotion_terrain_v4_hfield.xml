@@ -1,0 +1,682 @@
+<?xml version="1.0" ?>
+<mujoco model="g1_navigation_locomotion_terrain_v4_hfield">
+  <include file="g1_12dof_collision_from_urdf.xml"/>
+  <statistic center="0 0 1.0" extent="14.0"/>
+  <visual>
+    <headlight diffuse="0.7 0.7 0.7" ambient="0.25 0.25 0.25" specular="0.45 0.45 0.45"/>
+    <rgba haze="0.12 0.16 0.20 1"/>
+    <global azimuth="-135" elevation="-24"/>
+  </visual>
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.05 0.07 0.09" rgb2="0.25 0.30 0.35" width="512" height="3072"/>
+    <texture type="2d" name="ground_tex" builtin="checker" mark="edge" rgb1="0.24 0.27 0.23" rgb2="0.18 0.20 0.17" markrgb="0.55 0.55 0.55" width="512" height="512"/>
+
+    <!-- size: x/y half extents, height scale, base thickness. Matches IsaacLab rough_patch_size=(2m, 2m), rough_height_range up to 5cm. -->
+    <hfield name="rough_sw_hfield" file="rough_sw_hfield.png" size="1.000 1.000 0.050 0.005"/>
+    <hfield name="rough_mid_hfield" file="rough_mid_hfield.png" size="1.000 1.000 0.050 0.005"/>
+    <hfield name="rough_ne_hfield" file="rough_ne_hfield.png" size="1.000 1.000 0.050 0.005"/>
+
+
+    <material name="ground_mat" texture="ground_tex" texuniform="true" texrepeat="24 20" reflectance="0.04"/>
+    <material name="wall_mat" rgba="0.46 0.46 0.50 1" reflectance="0.07"/>
+    <material name="obstacle_mat" rgba="0.72 0.36 0.18 1" reflectance="0.05"/>
+    <material name="rough_mat" rgba="0.30 0.26 0.21 1" reflectance="0.03"/>
+    <material name="step_mat" rgba="0.39 0.40 0.34 1" reflectance="0.04"/>
+    <material name="ramp_mat" rgba="0.34 0.43 0.34 1" reflectance="0.04"/>
+    <material name="curb_mat" rgba="0.24 0.27 0.30 1" reflectance="0.03"/>
+  </asset>
+  <worldbody>
+    <light name="main_light" pos="0 0 9" dir="0 0 -1" directional="true" diffuse="0.8 0.8 0.8"/>
+    <light name="side_light" pos="-6 -5 6" dir="1 1 -1" directional="true" diffuse="0.35 0.35 0.35"/>
+    <!-- Regular 5x5 maze floor. The plane is replaced by floor tiles so the trench can be a real shallow depression. -->
+    <geom name="floor_north" type="box" pos="0.000 2.200 -0.025" size="11.000 8.800 0.025" material="ground_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="floor_south_left" type="box" pos="-3.100 -8.800 -0.025" size="7.900 2.200 0.025" material="ground_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="floor_south_right" type="box" pos="9.100 -8.800 -0.025" size="1.900 2.200 0.025" material="ground_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="floor_trench_south" type="box" pos="6.000 -10.200 -0.025" size="1.200 0.800 0.025" material="ground_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="floor_trench_north" type="box" pos="6.000 -7.400 -0.025" size="1.200 0.800 0.025" material="ground_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="trench_bottom" type="box" pos="6.000 -8.800 -0.145" size="1.200 0.600 0.025" material="rough_mat" group="1" friction="1.0 0.005 0.0001"/>
+
+    <!-- IsaacLab-style 22m x 22m maze boundary: 2m high, 0.15m thick. -->
+    <geom name="wall_north" type="box" pos="0.000 11.000 1.000" size="11.000 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_south" type="box" pos="0.000 -11.000 1.000" size="11.000 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_east" type="box" pos="11.000 0.000 1.000" size="0.075 11.000 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_west" type="box" pos="-11.000 0.000 1.000" size="0.075 11.000 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+
+    <!-- Challenging connected maze: selected cell edges are reopened as narrow gates, adding loops while keeping dead ends. -->
+    <geom name="maze_v_c1_r4" type="box" pos="-2.200 8.800 1.000" size="0.075 2.200 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_v_c2_r4_s" type="box" pos="2.200 7.150 1.000" size="0.075 0.550 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_v_c2_r4_n" type="box" pos="2.200 10.450 1.000" size="0.075 0.550 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_v_c3_r0_s" type="box" pos="6.600 -10.450 1.000" size="0.075 0.550 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_v_c3_r0_n" type="box" pos="6.600 -7.150 1.000" size="0.075 0.550 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_v_c3_r2_s" type="box" pos="6.600 -1.650 1.000" size="0.075 0.550 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_v_c3_r2_n" type="box" pos="6.600 1.650 1.000" size="0.075 0.550 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_h_c0_r0" type="box" pos="-8.800 -6.600 1.000" size="2.200 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_h_c1_r0" type="box" pos="-4.400 -6.600 1.000" size="2.200 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_h_c3_r0" type="box" pos="4.400 -6.600 1.000" size="2.200 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_h_c0_r1" type="box" pos="-8.800 -2.200 1.000" size="2.200 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_h_c1_r1_w" type="box" pos="-6.050 -2.200 1.000" size="0.550 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_h_c1_r1_e" type="box" pos="-2.750 -2.200 1.000" size="0.550 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_h_c2_r1" type="box" pos="0.000 -2.200 1.000" size="2.200 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_h_c4_r1" type="box" pos="8.800 -2.200 1.000" size="2.200 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_h_c1_r2" type="box" pos="-4.400 2.200 1.000" size="2.200 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_h_c2_r2_w" type="box" pos="-1.650 2.200 1.000" size="0.550 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_h_c2_r2_e" type="box" pos="1.650 2.200 1.000" size="0.550 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_h_c3_r2" type="box" pos="4.400 2.200 1.000" size="2.200 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_h_c0_r3" type="box" pos="-8.800 6.600 1.000" size="2.200 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_h_c3_r3" type="box" pos="4.400 6.600 1.000" size="2.200 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+
+    <!-- Narrowed open passages: extra short wall stubs preserve connectivity while increasing maze density. -->
+    <geom name="maze_gate_h_c2_r0_w" type="box" pos="-1.650 -6.600 1.000" size="0.550 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_h_c2_r0_e" type="box" pos="1.650 -6.600 1.000" size="0.550 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_v_c2_r1_s" type="box" pos="2.200 -6.050 1.000" size="0.075 0.550 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_v_c2_r1_n" type="box" pos="2.200 -2.750 1.000" size="0.075 0.550 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_h_c3_r1_w" type="box" pos="2.750 -2.200 1.000" size="0.550 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_h_c3_r1_e" type="box" pos="6.050 -2.200 1.000" size="0.550 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_v_c1_r3_s" type="box" pos="-2.200 2.750 1.000" size="0.075 0.550 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_v_c1_r3_n" type="box" pos="-2.200 6.050 1.000" size="0.075 0.550 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_h_c4_r3_w" type="box" pos="7.150 6.600 1.000" size="0.550 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_gate_h_c4_r3_e" type="box" pos="10.450 6.600 1.000" size="0.550 0.075 1.000" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+
+    <!-- Forced route terrain: ramp fills the full middle gate opening, x=3.3..5.5. -->
+    <geom name="route_gate_ramp_up" type="box" pos="4.400 -2.950 0.075" size="1.100 0.700 0.075" material="ramp_mat" group="1" friction="1.0 0.005 0.0001" quat="0.998630 0.052336 0.000000 0.000000"/>
+    <geom name="route_gate_ramp_platform" type="box" pos="4.400 -2.200 0.110" size="1.100 0.250 0.110" material="ramp_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="route_gate_ramp_down" type="box" pos="4.400 -1.450 0.075" size="1.100 0.700 0.075" material="ramp_mat" group="1" friction="1.0 0.005 0.0001" quat="0.998630 -0.052336 0.000000 0.000000"/>
+
+    <!-- Forced route terrain: 7 cm steps fill the full start corridor, y=-10.925..-6.675. -->
+    <geom name="route_start_stair_up_0" type="box" pos="-8.025 -8.800 0.035" size="0.225 2.125 0.035" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="route_start_stair_up_1" type="box" pos="-7.575 -8.800 0.070" size="0.225 2.125 0.070" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="route_start_stair_up_2" type="box" pos="-7.125 -8.800 0.105" size="0.225 2.125 0.105" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="route_start_stair_platform" type="box" pos="-6.612 -8.800 0.105" size="0.288 2.125 0.105" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="route_start_stair_down_0" type="box" pos="-6.099 -8.800 0.105" size="0.225 2.125 0.105" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="route_start_stair_down_1" type="box" pos="-5.649 -8.800 0.070" size="0.225 2.125 0.070" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="route_start_stair_down_2" type="box" pos="-5.199 -8.800 0.035" size="0.225 2.125 0.035" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+
+    <!-- Rough ground: three regular cell-centered hfield patches. -->
+    <geom name="rough_regular_sw" type="hfield" hfield="rough_sw_hfield" pos="-8.800 -4.400 0.000" material="rough_mat" group="1" friction="0.9 0.003 0.0001" solref="0.035 1.0" solimp="0.90 0.95 0.002" margin="0.003"/>
+    <geom name="rough_regular_mid" type="hfield" hfield="rough_mid_hfield" pos="-4.400 4.400 0.000" material="rough_mat" group="1" friction="0.9 0.003 0.0001" solref="0.035 1.0" solimp="0.90 0.95 0.002" margin="0.003"/>
+    <geom name="rough_regular_ne" type="hfield" hfield="rough_ne_hfield" pos="4.400 4.400 0.000" material="rough_mat" group="1" friction="0.9 0.003 0.0001" solref="0.035 1.0" solimp="0.90 0.95 0.002" margin="0.003"/>
+
+    <!-- Obstacles: small cell-centered objects that create avoidance behavior without closing any passage. -->
+    <geom name="maze_obs_box_01" type="box" pos="-4.400 -8.800 0.180" size="0.260 0.220 0.180" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_obs_box_02" type="box" pos="4.400 -4.400 0.180" size="0.220 0.260 0.180" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_obs_box_03" type="box" pos="-8.800 0.000 0.160" size="0.220 0.200 0.160" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_obs_box_04" type="box" pos="4.400 8.800 0.200" size="0.240 0.220 0.200" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_obs_box_05" type="box" pos="0.000 -8.800 0.220" size="0.320 0.260 0.220" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_obs_box_06" type="box" pos="8.800 0.000 0.220" size="0.300 0.240 0.220" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_obs_cylinder_01" type="cylinder" pos="8.800 -4.400 0.220" size="0.150 0.220" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_obs_cylinder_02" type="cylinder" pos="0.000 4.400 0.200" size="0.140 0.200" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_obs_cylinder_03" type="cylinder" pos="-4.400 0.000 0.240" size="0.170 0.240" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="maze_obs_cylinder_04" type="cylinder" pos="-8.800 8.800 0.220" size="0.150 0.220" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+
+    <!-- Start and goal markers. -->
+    <site name="origin_marker" type="sphere" pos="0.0 0.0 0.08" size="0.18" rgba="0.85 0.4 0.4 0.8"/>
+    <site name="start_marker" type="sphere" pos="-8.8 -9.9 0.08" size="0.18" rgba="0.1 0.85 0.1 0.8"/>
+    <site name="goal_marker" type="sphere" pos="8.8 8.8 0.08" size="0.18" rgba="0.95 0.1 0.1 0.8"/>
+
+
+
+    <body name="marker0" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker1" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker2" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker3" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker4" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker5" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker6" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker7" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker8" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker9" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker10" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker11" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker12" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker13" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker14" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker15" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker16" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker17" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker18" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker19" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker20" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker21" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker22" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker23" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker24" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker25" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker26" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker27" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker28" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker29" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker30" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker31" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker32" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker33" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker34" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker35" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker36" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker37" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker38" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker39" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker40" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker41" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker42" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker43" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker44" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker45" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker46" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker47" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker48" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker49" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker50" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker51" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker52" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker53" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker54" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker55" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker56" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker57" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker58" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker59" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker60" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker61" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker62" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker63" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker64" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker65" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker66" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker67" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker68" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker69" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker70" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker71" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker72" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker73" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker74" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker75" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker76" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker77" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker78" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker79" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker80" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker81" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker82" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker83" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker84" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker85" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker86" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker87" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker88" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker89" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker90" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker91" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker92" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker93" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker94" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker95" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker96" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker97" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker98" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker99" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker100" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker101" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker102" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker103" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker104" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker105" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker106" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker107" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker108" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker109" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker110" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker111" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker112" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker113" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker114" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker115" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker116" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker117" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker118" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker119" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker120" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker121" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker122" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker123" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker124" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker125" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker126" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker127" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker128" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker129" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker130" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker131" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker132" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker133" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker134" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker135" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker136" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker137" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker138" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker139" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker140" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker141" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker142" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker143" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker144" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker145" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker146" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker147" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker148" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker149" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker150" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker151" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker152" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker153" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker154" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker155" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker156" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker157" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker158" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker159" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker160" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker161" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker162" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker163" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker164" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker165" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker166" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker167" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker168" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker169" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker170" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker171" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker172" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker173" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker174" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker175" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker176" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker177" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker178" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker179" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker180" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker181" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker182" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker183" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker184" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker185" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+    <body name="marker186" mocap="true">
+        <geom type="sphere" size="0.02" rgba="255 0 0 0.5" contype="0" conaffinity="0" group="5" />
+    </body>
+
+
+  </worldbody>
+</mujoco>

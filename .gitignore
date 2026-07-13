@@ -1,0 +1,12 @@
+*.egg-info
+*.pyc
+.vscode
+outputs
+logs
+run_bash.sh
+wandb
+MUJOCO_LOG.TXT
+.history
+logs/
+outputs/
+.git_broken_backup/

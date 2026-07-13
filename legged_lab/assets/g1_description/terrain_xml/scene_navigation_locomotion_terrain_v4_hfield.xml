@@ -1,0 +1,94 @@
+<?xml version="1.0" ?>
+<mujoco model="g1_navigation_locomotion_terrain_v4_hfield">
+  <include file="g1_12dof.xml"/>
+  <statistic center="0 0 1.0" extent="14.0"/>
+  <visual>
+    <headlight diffuse="0.7 0.7 0.7" ambient="0.25 0.25 0.25" specular="0.45 0.45 0.45"/>
+    <rgba haze="0.12 0.16 0.20 1"/>
+    <global azimuth="-135" elevation="-24"/>
+  </visual>
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.05 0.07 0.09" rgb2="0.25 0.30 0.35" width="512" height="3072"/>
+    <texture type="2d" name="ground_tex" builtin="checker" mark="edge" rgb1="0.24 0.27 0.23" rgb2="0.18 0.20 0.17" markrgb="0.55 0.55 0.55" width="512" height="512"/>
+    <hfield name="rough_sw_hfield" file="rough_sw_hfield.png" size="1.650 1.250 0.090 0.010"/>
+    <hfield name="rough_mid_hfield" file="rough_mid_hfield.png" size="1.950 1.350 0.085 0.010"/>
+    <hfield name="rough_ne_hfield" file="rough_ne_hfield.png" size="1.650 1.250 0.090 0.010"/>
+    <material name="ground_mat" texture="ground_tex" texuniform="true" texrepeat="24 20" reflectance="0.04"/>
+    <material name="wall_mat" rgba="0.46 0.46 0.50 1" reflectance="0.07"/>
+    <material name="obstacle_mat" rgba="0.72 0.36 0.18 1" reflectance="0.05"/>
+    <material name="rough_mat" rgba="0.30 0.26 0.21 1" reflectance="0.03"/>
+    <material name="step_mat" rgba="0.39 0.40 0.34 1" reflectance="0.04"/>
+    <material name="ramp_mat" rgba="0.34 0.43 0.34 1" reflectance="0.04"/>
+    <material name="curb_mat" rgba="0.24 0.27 0.30 1" reflectance="0.03"/>
+  </asset>
+  <worldbody>
+    <light name="main_light" pos="0 0 9" dir="0 0 -1" directional="true" diffuse="0.8 0.8 0.8"/>
+    <light name="side_light" pos="-6 -5 6" dir="1 1 -1" directional="true" diffuse="0.35 0.35 0.35"/>
+    <geom name="continuous_floor" type="plane" pos="0 0 0" size="26 22 0.05" material="ground_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_north" type="box" pos="0.000 10.000 0.625" size="12.000 0.160 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_south" type="box" pos="0.000 -10.000 0.625" size="12.000 0.160 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_east" type="box" pos="12.000 0.000 0.625" size="0.160 10.000 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_west" type="box" pos="-12.000 0.000 0.625" size="0.160 10.000 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_L1" type="box" pos="-8.500 -3.600 0.625" size="0.160 3.400 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_L2" type="box" pos="-7.200 5.200 0.625" size="0.160 3.000 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_L3" type="box" pos="-10.000 0.800 0.625" size="1.600 0.160 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_L4" type="box" pos="-6.000 -7.300 0.625" size="2.200 0.160 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_C1" type="box" pos="-3.400 -1.800 0.625" size="0.160 3.800 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_C2" type="box" pos="2.200 3.000 0.625" size="0.160 3.200 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_C3" type="box" pos="-0.800 7.000 0.625" size="3.400 0.160 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_C4" type="box" pos="1.100 -7.000 0.625" size="3.600 0.160 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_R1" type="box" pos="6.800 -3.000 0.625" size="0.160 3.800 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_R2" type="box" pos="8.700 4.200 0.625" size="0.160 3.500 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_R3" type="box" pos="6.600 0.400 0.625" size="2.600 0.160 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="wall_R4" type="box" pos="8.500 -7.000 0.625" size="2.300 0.160 0.625" material="wall_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_x_left_corridor_up_0" type="box" pos="-11.405 -1.700 0.016" size="0.170 0.525 0.016" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_x_left_corridor_up_1" type="box" pos="-11.065 -1.700 0.032" size="0.170 0.525 0.032" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_x_left_corridor_up_2" type="box" pos="-10.725 -1.700 0.048" size="0.170 0.525 0.048" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_x_left_corridor_up_3" type="box" pos="-10.385 -1.700 0.064" size="0.170 0.525 0.064" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_x_left_corridor_up_4" type="box" pos="-10.045 -1.700 0.080" size="0.170 0.525 0.080" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_x_left_corridor_platform" type="box" pos="-9.400 -1.700 0.080" size="0.475 0.525 0.080" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_x_left_corridor_down_0" type="box" pos="-8.755 -1.700 0.080" size="0.170 0.525 0.080" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_x_left_corridor_down_1" type="box" pos="-8.415 -1.700 0.064" size="0.170 0.525 0.064" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_x_left_corridor_down_2" type="box" pos="-8.075 -1.700 0.048" size="0.170 0.525 0.048" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_x_left_corridor_down_3" type="box" pos="-7.735 -1.700 0.032" size="0.170 0.525 0.032" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_x_left_corridor_down_4" type="box" pos="-7.395 -1.700 0.016" size="0.170 0.525 0.016" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_y_top_corridor_up_0" type="box" pos="-1.500 2.965 0.018" size="0.525 0.180 0.018" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_y_top_corridor_up_1" type="box" pos="-1.500 3.325 0.035" size="0.525 0.180 0.035" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_y_top_corridor_up_2" type="box" pos="-1.500 3.685 0.053" size="0.525 0.180 0.053" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_y_top_corridor_up_3" type="box" pos="-1.500 4.045 0.070" size="0.525 0.180 0.070" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_y_top_corridor_platform" type="box" pos="-1.500 4.700 0.070" size="0.525 0.475 0.070" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_y_top_corridor_down_0" type="box" pos="-1.500 5.355 0.070" size="0.525 0.180 0.070" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_y_top_corridor_down_1" type="box" pos="-1.500 5.715 0.053" size="0.525 0.180 0.053" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_y_top_corridor_down_2" type="box" pos="-1.500 6.075 0.035" size="0.525 0.180 0.035" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="stair_y_top_corridor_down_3" type="box" pos="-1.500 6.435 0.018" size="0.525 0.180 0.018" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="ramp_x_bottom_corridor_up_ramp" type="box" pos="2.675 -4.800 0.040" size="0.775 0.525 0.055" material="ramp_mat" group="1" friction="1.0 0.005 0.0001" quat="0.999668 -0.000000 -0.025781 -0.000000"/>
+    <geom name="ramp_x_bottom_corridor_platform" type="box" pos="3.900 -4.800 0.080" size="0.450 0.525 0.080" material="ramp_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="ramp_x_bottom_corridor_down_ramp" type="box" pos="5.125 -4.800 0.040" size="0.775 0.525 0.055" material="ramp_mat" group="1" friction="1.0 0.005 0.0001" quat="0.999668 0.000000 0.025781 0.000000"/>
+    <geom name="ramp_y_right_corridor_up_ramp" type="box" pos="9.400 1.550 0.037" size="0.500 0.725 0.055" material="ramp_mat" group="1" friction="1.0 0.005 0.0001" quat="0.999666 0.025836 0.000000 0.000000"/>
+    <geom name="ramp_y_right_corridor_platform" type="box" pos="9.400 2.700 0.075" size="0.500 0.425 0.075" material="ramp_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="ramp_y_right_corridor_down_ramp" type="box" pos="9.400 3.850 0.037" size="0.500 0.725 0.055" material="ramp_mat" group="1" friction="1.0 0.005 0.0001" quat="0.999666 -0.025836 -0.000000 -0.000000"/>
+    <geom name="rough_sw_hfield_geom" type="hfield" hfield="rough_sw_hfield" pos="-8.800 -5.800 0.000" material="rough_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="rough_mid_hfield_geom" type="hfield" hfield="rough_mid_hfield" pos="0.000 0.400 0.000" material="rough_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="rough_ne_hfield_geom" type="hfield" hfield="rough_ne_hfield" pos="6.500 6.400 0.000" material="rough_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="curb_x_left" type="box" pos="5.000 -0.650 0.070" size="1.650 0.090 0.070" material="curb_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="curb_x_right" type="box" pos="5.000 0.350 0.070" size="1.650 0.090 0.070" material="curb_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="curb_crossing_platform" type="box" pos="5.000 -0.150 0.035" size="0.340 0.340 0.035" material="step_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="box_obs_01" type="box" pos="-10.200 -8.000 0.600" size="0.650 0.700 0.600" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="box_obs_02" type="box" pos="-10.400 6.800 0.700" size="0.800 0.550 0.700" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="box_obs_03" type="box" pos="-5.200 -0.400 0.600" size="0.620 0.580 0.600" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="box_obs_04" type="box" pos="-5.200 8.200 0.800" size="0.900 0.550 0.800" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="box_obs_05" type="box" pos="-0.200 -3.700 0.700" size="0.650 0.850 0.700" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="box_obs_06" type="box" pos="3.800 7.800 0.700" size="0.780 0.620 0.700" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="box_obs_07" type="box" pos="7.900 -6.100 0.820" size="0.780 0.620 0.820" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="box_obs_08" type="box" pos="10.200 -2.000 0.900" size="0.800 0.600 0.900" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="box_obs_09" type="box" pos="10.400 7.500 0.780" size="0.600 0.880 0.780" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="pillar_01" type="cylinder" pos="-7.100 2.200 0.900" size="0.420 0.900" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="pillar_02" type="cylinder" pos="-2.200 -8.200 1.000" size="0.420 1.000" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="pillar_03" type="cylinder" pos="1.700 8.600 0.950" size="0.420 0.950" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="pillar_04" type="cylinder" pos="5.000 2.900 0.920" size="0.450 0.920" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="pillar_05" type="cylinder" pos="8.300 -8.200 1.000" size="0.420 1.000" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <geom name="pillar_06" type="cylinder" pos="10.400 4.200 0.950" size="0.420 0.950" material="obstacle_mat" group="1" friction="1.0 0.005 0.0001"/>
+    <site name="start_marker" type="sphere" pos="-10.8 -8.8 0.08" size="0.18" rgba="0.1 0.85 0.1 0.8"/>
+    <site name="goal_marker" type="sphere" pos="10.8 8.8 0.08" size="0.18" rgba="0.95 0.1 0.1 0.8"/>
+  </worldbody>
+</mujoco>
