@@ -1,4 +1,6 @@
-# G1 TerrainNav Lab
+# TerraStride-G1
+
+Vision-guided humanoid locomotion across diverse terrain.
 
 [![IsaacSim](https://img.shields.io/badge/IsaacSim-4.5.0-silver.svg)](https://docs.omniverse.nvidia.com/isaacsim/latest/overview.html)
 [![Isaac Lab](https://img.shields.io/badge/IsaacLab-2.1.0-silver)](https://isaac-sim.github.io/IsaacLab)
@@ -7,12 +9,12 @@
 [![Platform](https://img.shields.io/badge/platform-linux--64-orange.svg)](https://releases.ubuntu.com/22.04/)
 [![License](https://img.shields.io/badge/license-BSD--3-yellow.svg)](LICENSE)
 
-G1 TerrainNav Lab is a LeggedLab/IsaacLab project for Unitree G1 12-DOF lower-body locomotion and navigation. The repository contains the training tasks, MuJoCo terrain scene, and sim2sim tools used to evaluate obstacle traversal with depth and height-scan perception.
+TerraStride-G1 is a LeggedLab/IsaacLab project for Unitree G1 12-DOF lower-body locomotion and navigation. The repository contains training tasks, multi-terrain MuJoCo scenes, and sim2sim tools for evaluating terrain-adaptive locomotion with depth and height-scan perception.
 
 ## Demo (Speed 2x Normal Speed)
 
 <p align="center">
-  <img src="docs/g1_multiview_hq_speed_2x.gif" width="900" alt="G1 obstacle navigation demo">
+  <img src="docs/g1_multiview_hq_speed_2x.gif" width="900" alt="G1 multi-terrain locomotion demo">
 </p>
 
 Scope:
@@ -20,7 +22,7 @@ Scope:
 - `g1_locomotion`: low-level velocity tracking for the G1 lower body.
 - `g1_navigation`: high-level navigation that produces velocity commands for the frozen locomotion policy.
 - Height-scan and depth-camera observations for terrain-aware navigation.
-- MuJoCo scene with start/goal markers, walls, rough terrain, full-corridor stairs, and full-corridor ramps.
+- MuJoCo scene with start/goal markers, walls, rough ground, full-corridor stairs, and full-corridor ramps.
 - Multi-view MuJoCo recording: world overview, forward third-person follow view, and raw grayscale depth view.
 - Goal-triggered stop for sim2sim evaluation and video capture.
 
@@ -86,8 +88,8 @@ git lfs install
 Create a clean Conda environment:
 
 ```bash
-conda create -n g1-terrainnav python=3.10 -y
-conda activate g1-terrainnav
+conda create -n terrastride-g1 python=3.10 -y
+conda activate terrastride-g1
 python -m pip install --upgrade pip setuptools wheel
 ```
 
@@ -116,8 +118,8 @@ If this command fails, fix the Isaac Sim / IsaacLab installation before installi
 Clone the repository, then install the project package and bundled RSL-RL package in editable mode:
 
 ```bash
-git clone https://github.com/<your-user>/G1-TerrainNav-Lab.git
-cd G1-TerrainNav-Lab
+git clone https://github.com/<your-user>/TerraStride-G1.git
+cd TerraStride-G1
 
 python -m pip install -e .
 python -m pip install -e rsl_rl
@@ -173,7 +175,7 @@ When running scripts, pass policy paths explicitly unless you use the repository
 Run a Python import check:
 
 ```bash
-python -c "import torch, mujoco, cv2, isaaclab; import legged_lab.envs; print('G1 TerrainNav Lab import OK')"
+python -c "import torch, mujoco, cv2, isaaclab; import legged_lab.envs; print('TerraStride-G1 import OK')"
 ```
 
 Check that the main task registration file is syntactically valid:
